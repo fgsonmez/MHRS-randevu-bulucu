@@ -7,6 +7,7 @@ Bu program, MHRS (Merkezi Hekim Randevu Sistemi) üzerinden otomatik olarak rand
 - Otomatik MHRS girişi
 - Belirtilen tarih aralığında randevu arama
 - Hastane ve klinik filtreleme
+- Doktor adına göre filtreleme
 - Sesli ve görsel bildirimler
 - E-posta bildirimleri
 - Detaylı loglama
@@ -49,6 +50,7 @@ Program, randevu bulunduğunda e-posta bildirimi gönderebilir. Bunun için Gmai
     "District": "ILCE_ADI",
     "Clinic": "KLINIK_ADI",
     "Hospital": "HASTANE_ADI",
+    "DoctorName": "DOKTOR_ADI",
     "StartDate": "BASLANGIC_TARIHI",
     "EndDate": "BITIS_TARIHI",
     "Email": "GMAIL_ADRESINIZ",
@@ -65,6 +67,7 @@ Program, randevu bulunduğunda e-posta bildirimi gönderebilir. Bunun için Gmai
     "District": "YENİMAHALLE",
     "Clinic": "İç Hastalıkları (Dahiliye)",
     "Hospital": "ANKARA ETLİK ŞEHİR HASTANESİ",
+    "DoctorName": "ALPER ŞENKALFA",
     "StartDate": "13.05.2025",
     "EndDate": "14.05.2025",
     "Email": "ornek@gmail.com",
@@ -86,6 +89,7 @@ Program, randevu bulunduğunda e-posta bildirimi gönderebilir. Bunun için Gmai
 - Randevu bulunduğunda sesli bildirim verir ve e-posta gönderir
 - Hata durumunda 5 dakika bekleyip tekrar dener
 - Tüm işlemler `mhrs_randevu.log` dosyasına kaydedilir
+- Doktor adı filtresi opsiyoneldir, boş bırakılabilir veya config dosyasından kaldırılabilir
 
 ## Sorun Giderme
 
@@ -100,6 +104,7 @@ Program, randevu bulunduğunda e-posta bildirimi gönderebilir. Bunun için Gmai
 1. **Giriş Hatası**: TC Kimlik No ve şifrenin doğru olduğundan emin olun
 2. **Element Bulunamadı Hatası**: MHRS sitesinin yapısı değişmiş olabilir, lütfen bildirin
 3. **Tarayıcı Hatası**: Chrome'un güncel sürümünü kullandığınızdan emin olun
+4. **Doktor Seçim Hatası**: Doktor adının tam olarak MHRS sistemindeki gibi yazıldığından emin olun
 
 ## Güvenlik
 
