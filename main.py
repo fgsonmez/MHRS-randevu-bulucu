@@ -205,6 +205,25 @@ class MhrsRandevuFind:
                     logging.error(f"Hastane seçiminde hata: {str(e)}")
                     raise
 
+            # Doktor adı filtreleme
+            if self.data.get("DoctorName") and self.data["DoctorName"].strip():
+                try:
+                    logging.info(f"Doktor adı filtreleniyor: {self.data['DoctorName']}")
+                    # Combobox'ı bul ve tıkla
+                    doctor_combobox = self.wait.until(EC.element_to_be_clickable((By.ID, 'hekim-tree-select')))
+                    doctor_combobox.click()
+                    sleep(1)
+                    
+                    # Doktor listesinden seçim yap
+                    doctor_name = self.data["DoctorName"]
+                    doctor_element = self.wait.until(EC.element_to_be_clickable((By.XPATH, f"//span[contains(@id, 'hekim-') and contains(text(), '{doctor_name}')]")))
+                    doctor_element.click()
+                    logging.info(f"Doktor seçildi: {doctor_name}")
+                    sleep(1)
+                except Exception as e:
+                    logging.error(f"Doktor seçiminde hata: {str(e)}")
+                    raise
+
             # Tarih seçimi
             if not self.data["StartDate"] == "FARK ETMEZ" and not self.data["EndDate"] == "FARK ETMEZ":
                 try:
