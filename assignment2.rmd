@@ -1,0 +1,635 @@
+---
+output:
+  html_document: default
+---
+<style>
+    h1, h2{
+        text-align: center;
+    }
+
+    h1{
+        text-align: center;
+        font-size: 3em;
+        font-weight: bold;
+    }
+
+    h3{
+        font-weight: bold;
+        background-color: rgb(230, 230, 230);
+        padding-left: 20px;
+        padding-top: 5px;
+        padding-bottom: 5px;
+        margin-top: 50px;
+    }
+
+    table{
+        width: 100%;
+    }
+    
+    h4{
+        display: block;
+        width: 100%;
+        padding-right: 20px;
+        text-align: right;
+        font-weight: bold;
+        background-color: rgb(240,240,240);
+    }
+
+</style>
+
+# CMP713 Data Mining
+## 2024-2025 Spring - Assigment 2
+## Given 12/05/2025, Due 21/05/2025 (excluded)
+
+
+
+```{r, echo=F}
+library(knitr)
+rm(list = ls())
+student_name = "Faruk Gökhan Sönmex"
+student_id   = "36740148160"
+grades       = c(15,10,10)
+given        = c(0,0,0)
+
+head_matter <- data.frame(Name  = c(student_name, ""),
+                          ID    = c(student_id, ""),
+                          Points= c("Max", "Given"),
+                          Task1 = c(grades[1], given[1]),
+                          Task2 = c(grades[2], given[2]),
+                          Task3 = c(grades[3], given[3]),
+                          Total = c(sum(grades), sum(given)))
+kable(head_matter)
+```
+
+In this assignment you will work on a synthetic dataset related to the fictional *Zoomba* fruit. Note 
+that the zoomba fruit is completely fictional and does not exist in reality. 
+
+Do not change anything in this document, other than `student_name` and `student_id` variables in the above chunk, and the Answer sections below. In this assignment, you will submit your Rmd file at the end. Your solution should assume that the raw data is imported from [`zoomba_train.csv`](zoomba_train.csv) file in the same folder as your Rmd file. 
+
+Your solution should never install new packages! Only the packages we have shown in the course are allowed, and these are already installed on my computer. So, do not try to reinstall them (please!).
+
+Good luck!
+
+
+
+### TASK 1
+
+Import the data into R. Employ a brief exploratory data analysis to understand and preprocess the 
+data. Draw plots when necessary but don't overdo it! 
+
+You are expected to 
+
+- Understand feature distributions
+- Handle NAs (if any)
+- Deal with anomalies (if any)
+
+#### Answer
+```{r, cache=F}
+# Load necessary libraries (all allowed libraries)
+library(tidyverse)
+library(mlbench)
+library(rpart)
+library(rpart.plot)
+library(DMwR2)
+library(e1071)
+library(fpc)
+library(dplyr)
+library(ggplot2)
+library(arules)
+library(arulesViz)
+library(cluster)
+
+# Import the dataset
+zoomba_data <- read.csv("zoomba_train.csv")
+
+# Display basic information about the dataset
+str(zoomba_data)
+summary(zoomba_data)
+
+# Detailed examination of sweetness_level
+cat("\n--- Detailed Analysis of sweetness_level ---\n")
+# Check if sweetness_level exists
+if("sweetness_level" %in% colnames(zoomba_data)) {
+  # Check its class and structure
+  cat("Class of sweetness_level:", class(zoomba_data$sweetness_level), "\n")
+  cat("First 10 values of sweetness_level:\n")
+  print(head(zoomba_data$sweetness_level, 10))
+  
+  # Check for missing values specifically in sweetness_level
+  missing_in_sweetness <- sum(is.na(zoomba_data$sweetness_level))
+  cat("Number of missing values in sweetness_level:", missing_in_sweetness, "\n")
+  
+  if(missing_in_sweetness > 0) {
+    cat("Rows with missing sweetness_level values:\n")
+    print(head(which(is.na(zoomba_data$sweetness_level)), 10))
+    cat("These rows might have other characteristics:\n")
+    if(missing_in_sweetness <= 10) {
+      print(zoomba_data[is.na(zoomba_data$sweetness_level), ])
+    } else {
+      print(head(zoomba_data[is.na(zoomba_data$sweetness_level), ], 5))
+    }
+  }
+  
+  # Convert sweetness_level to numeric if it's not
+  if(!is.numeric(zoomba_data$sweetness_level)) {
+    cat("Converting sweetness_level from", class(zoomba_data$sweetness_level), "to numeric\n")
+    # Store the original values before conversion for comparison
+    original_values <- zoomba_data$sweetness_level
+    zoomba_data$sweetness_level <- as.numeric(as.character(zoomba_data$sweetness_level))
+    
+    # Check if conversion introduced any NAs
+    new_nas <- sum(is.na(zoomba_data$sweetness_level)) - missing_in_sweetness
+    if(new_nas > 0) {
+      cat("WARNING: Conversion introduced", new_nas, "new NA values\n")
+      cat("This suggests some non-numeric values were present\n")
+      
+      # Find problematic values
+      if(is.factor(original_values) || is.character(original_values)) {
+        problem_values <- unique(original_values[!is.na(original_values) & 
+                                               is.na(as.numeric(as.character(original_values)))])
+        cat("Problematic values that couldn't be converted to numeric:\n")
+        print(problem_values)
+      }
+    }
+  }
+}
+
+# Preprocessing all variables
+cat("\n--- General Data Preprocessing ---\n")
+# Convert all character/factor columns that should be numeric
+for(col in names(zoomba_data)) {
+  if(col == "fruit_id") {
+    # Keep fruit_id as character
+    zoomba_data$fruit_id <- as.character(zoomba_data$fruit_id)
+    cat("Kept fruit_id as character for identification purposes\n")
+  } else if(is.character(zoomba_data[[col]]) || is.factor(zoomba_data[[col]])) {
+    # Try converting to numeric
+    original_nas <- sum(is.na(zoomba_data[[col]]))
+    numeric_values <- suppressWarnings(as.numeric(as.character(zoomba_data[[col]])))
+    new_nas <- sum(is.na(numeric_values))
+    
+    if(new_nas <= original_nas) {
+      zoomba_data[[col]] <- numeric_values
+      cat("Converted", col, "to numeric\n")
+    } else {
+      cat("Warning:", col, "contains non-numeric values - conversion introduced", 
+          new_nas - original_nas, "new NAs\n")
+    }
+  }
+}
+
+# Check for missing values in all columns
+missing_values <- colSums(is.na(zoomba_data))
+if(any(missing_values > 0)) {
+  cat("\n--- Handling Missing Values ---\n")
+  cat("Columns with missing values:\n")
+  print(missing_values[missing_values > 0])
+  
+  # Impute missing values
+  for(col in names(missing_values)[missing_values > 0]) {
+    if(is.numeric(zoomba_data[[col]])) {
+      # For numeric columns, impute with median
+      median_val <- median(zoomba_data[[col]], na.rm = TRUE)
+      zoomba_data[[col]][is.na(zoomba_data[[col]])] <- median_val
+      cat("Imputed missing values in", col, "with median:", median_val, "\n")
+    } else {
+      # For categorical columns, impute with mode
+      mode_val <- names(sort(table(zoomba_data[[col]]), decreasing = TRUE))[1]
+      zoomba_data[[col]][is.na(zoomba_data[[col]])] <- mode_val
+      cat("Imputed missing values in", col, "with mode:", mode_val, "\n")
+    }
+  }
+}
+
+# Check for outliers in numeric columns
+cat("\n--- Detecting and Handling Outliers ---\n")
+for(col in names(zoomba_data)[sapply(zoomba_data, is.numeric)]) {
+  # Skip fruit_id if it's numeric
+  if(col == "fruit_id") next
+  
+  # Calculate quartiles and IQR
+  q1 <- quantile(zoomba_data[[col]], 0.25, na.rm = TRUE)
+  q3 <- quantile(zoomba_data[[col]], 0.75, na.rm = TRUE)
+  iqr <- q3 - q1
+  
+  # Define outlier bounds
+  lower_bound <- q1 - 1.5 * iqr
+  upper_bound <- q3 + 1.5 * iqr
+  
+  # Find outliers
+  outliers <- sum(zoomba_data[[col]] < lower_bound | zoomba_data[[col]] > upper_bound, na.rm = TRUE)
+  
+  if(outliers > 0) {
+    cat("Found", outliers, "outliers in", col, "\n")
+    # Cap outliers
+    zoomba_data[[col]][zoomba_data[[col]] < lower_bound] <- lower_bound
+    zoomba_data[[col]][zoomba_data[[col]] > upper_bound] <- upper_bound
+    cat("Capped outliers to the range [", lower_bound, ",", upper_bound, "]\n")
+  }
+}
+
+# Basic visualization of key variables
+cat("\n--- Data Visualization ---\n")
+# Price distribution
+p1 <- ggplot(zoomba_data, aes(x = price)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "white") +
+  theme_minimal() +
+  labs(title = "Distribution of Zoomba Fruit Prices")
+print(p1)
+
+# Store cleaned data
+zoomba_clean <- zoomba_data
+```
+
+### TASK 2
+
+Develop a model to predict the price of a Zoomba fruit. You can use the models we learned in class
+but not anything else. You are allowed to employ clustering, dependency modelling, decision tree 
+models or SVM. You are not allowed to use any models beyond that, such as random forest or ANN. 
+
+You must store your model as `my_model`, otherwise the next Task will fail and you will lose marks.
+  
+#### Answer
+```{r, cache=F, message=FALSE, warning=FALSE}
+# Use only allowed libraries
+library(tidyverse)
+library(mlbench)
+library(rpart)
+library(rpart.plot)
+library(DMwR2)
+library(e1071)
+library(fpc)
+library(dplyr)
+library(ggplot2)
+library(arules)
+library(arulesViz)
+library(cluster)
+
+# Prepare data
+model_data <- zoomba_clean %>% select(-fruit_id)
+# Log-transform target if positive
+if(min(model_data$price) > 0) model_data <- model_data %>% mutate(log_price = log(price), original_price = price)
+model_target <- ifelse("log_price" %in% names(model_data), "log_price", "price")
+
+# Manual 5-Fold CV setup
+set.seed(123)
+k <- 5
+n <- nrow(model_data)
+folds <- sample(rep(1:k, length.out = n))
+results <- tibble(fold=integer(), model=character(), rmse=numeric(), mae=numeric())
+
+# Exclusion list
+exclude_vars <- c("original_price")
+if(model_target=="log_price") {
+  exclude_vars <- c(exclude_vars, "price")
+} else if("log_price" %in% names(model_data)) {
+  exclude_vars <- c(exclude_vars, "log_price")
+}
+
+for(f in 1:k) {
+  # Split data for fold
+  cat("Processing fold", f, "of", k, "\n")
+  tr <- model_data[folds != f, ]
+  te <- model_data[folds == f, ]
+  
+  # Remove exclude cols
+  tr_mod <- tr
+  te_mod <- te
+  for(ex_var in exclude_vars) {
+    if(ex_var %in% names(tr_mod)) {
+      tr_mod <- tr_mod %>% select(-all_of(ex_var))
+    }
+    if(ex_var %in% names(te_mod)) {
+      te_mod <- te_mod %>% select(-all_of(ex_var))
+    }
+  }
+
+  # 1) Decision Tree CV
+  cat("  Testing Decision Trees with different complexity parameters\n")
+  # Test a range of cp values, starting from a bit higher to prevent overfitting
+  for(cp in seq(0.005, 0.05, by=0.005)) {
+    dt_formula <- as.formula(paste(model_target, "~ ."))
+    
+    # Inner CV for tuning maxdepth parameter to prevent overfitting
+    # Create 2-fold inner CV to find best maxdepth
+    inner_cv_folds <- sample(rep(1:2, length.out = nrow(tr_mod)))
+    inner_depths <- c(4, 6, 8, 10)  # Test different depth limits
+    inner_results <- data.frame(depth = numeric(), val_mae = numeric())
+    
+    for(depth in inner_depths) {
+      # Inner CV with two folds to quickly evaluate depth
+      inner_tr <- tr_mod[inner_cv_folds == 1, ]
+      inner_val <- tr_mod[inner_cv_folds == 2, ]
+      
+      # Train model with current depth
+      inner_dt <- rpart(
+        dt_formula, data=inner_tr, method="anova",
+        control=rpart.control(cp=cp, minsplit=20, maxdepth=depth)
+      )
+      
+      # Validate
+      inner_preds <- predict(inner_dt, inner_val)
+      inner_actual <- if(model_target=="log_price") tr[inner_cv_folds == 2, "original_price"] else tr[inner_cv_folds == 2, "price"]
+      if(model_target=="log_price") inner_preds <- exp(inner_preds)
+      inner_mae <- mean(abs(inner_actual - inner_preds))
+      
+      inner_results <- rbind(inner_results, data.frame(depth = depth, val_mae = inner_mae))
+    }
+    
+    # Get best depth from inner CV
+    best_depth <- inner_results$depth[which.min(inner_results$val_mae)]
+    cat("    For cp =", cp, "best depth =", best_depth, "\n")
+    
+    # Train model with best depth
+    dt <- rpart(
+      dt_formula, data=tr_mod, method="anova",
+      control=rpart.control(cp=cp, minsplit=20, maxdepth=best_depth)
+    )
+    
+    # Apply cost-complexity pruning
+    # Find the optimal cp value for pruning
+    best_cp <- dt$cptable[which.min(dt$cptable[,"xerror"]), "CP"]
+    if(best_cp > cp) {
+      cat("    Pruning tree with cp =", best_cp, "\n")
+      dt <- prune(dt, cp = best_cp)
+    }
+    
+    # Make predictions
+    preds <- predict(dt, te_mod)
+    actual <- if(model_target=="log_price") te$original_price else te$price
+    if(model_target=="log_price") preds <- exp(preds)
+    rm <- sqrt(mean((actual-preds)^2)) 
+    ma <- mean(abs(actual-preds))
+    
+    # Store model complexity info along with performance
+    n_nodes <- nrow(dt$frame)
+    results <- add_row(results, fold=f, model=paste0("DT(cp=",cp,",d=",best_depth,",n=",n_nodes,")"), rmse=rm, mae=ma)
+  }
+
+  # 2) SVM CV (top 5 numeric features)
+  cat("  Testing SVM models with different parameters\n")
+  
+  # Select numeric columns excluding target variables
+  num_tr <- tr %>% 
+    select(where(is.numeric)) %>% 
+    select(-matches("original_price|price|log_price"))
+  
+  if(ncol(num_tr) > 0) {
+    # Check if target exists in training data
+    if(model_target %in% names(tr)) {
+      # Calculate correlations
+      corrs <- cor(num_tr, tr[[model_target]], use="pairwise.complete.obs")
+      corrs_abs <- abs(corrs)
+      
+      # Sort and get top features (at most 5, but might be fewer if fewer numeric columns)
+      sorted_indices <- order(corrs_abs, decreasing=TRUE)
+      top_n <- min(5, length(sorted_indices))
+      
+      if(top_n > 0) {
+        feats <- rownames(corrs)[sorted_indices[1:top_n]]
+        
+        # Debug: print the features being used
+        cat("    Using features:", paste(feats, collapse=", "), "\n")
+        
+        # Test different hyperparameter combinations
+        for(C in c(1,10,100)) {
+          for(g in c(0.01,0.1,1)) {
+            # Create formula with features
+            frm_text <- paste(model_target, "~", paste(feats, collapse=" + "))
+            frm <- as.formula(frm_text)
+            
+            # Train SVM
+            svm_mod <- svm(frm, data=tr, kernel="radial", cost=C, gamma=g)
+            pred <- predict(svm_mod, te)
+            
+            # Get actual values and convert predictions if needed
+            actual <- if(model_target=="log_price") te$original_price else te$price
+            if(model_target=="log_price") pred <- exp(pred)
+            
+            # Calculate metrics
+            rm <- sqrt(mean((actual-pred)^2))
+            ma <- mean(abs(actual-pred))
+            
+            # Store results
+            results <- add_row(results, 
+                             fold=f, 
+                             model=paste0("SVM(C=",C,",γ=",g,")"), 
+                             rmse=rm, 
+                             mae=ma)
+          }
+        }
+      } else {
+        cat("    No features selected for SVM (not enough numeric columns)\n")
+      }
+    } else {
+      cat("    Target variable not found in training data\n")
+    }
+  } else {
+    cat("    No numeric features available for SVM\n")
+  }
+}
+
+# Summarize CV
+cv_summary <- results %>% 
+  group_by(model) %>% 
+  summarise(
+    mean_rmse=mean(rmse), 
+    mean_mae=mean(mae),
+    sd_rmse=sd(rmse),
+    sd_mae=sd(mae)
+  )
+
+print(knitr::kable(cv_summary, digits=4))
+
+# Visualize model performance
+ggplot(results, aes(x=model, y=mae, fill=model)) +
+  geom_boxplot() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  labs(title="Model Performance Across Folds", y="Mean Absolute Error")
+
+# Select best model by MAE
+best <- cv_summary %>% slice_min(mean_mae, n=1) %>% pull(model)
+cat("Best model:", best, "\n")
+
+# Final training on full data
+if(startsWith(best, "DT")) {
+  # Extract parameters from best model name
+  cp_best <- as.numeric(str_extract(best, "(?<=cp=)[0-9\\.]+"))
+  depth_best <- as.numeric(str_extract(best, "(?<=d=)[0-9]+"))
+  cat("Training final Decision Tree with cp =", cp_best, "and depth =", depth_best, "\n")
+  
+  # Training data excluding unnecessary columns
+  train_data <- model_data
+  for(ex_var in c("original_price", "log_price")) {
+    if(ex_var %in% names(train_data)) {
+      train_data <- train_data %>% select(-all_of(ex_var))
+    }
+  }
+  
+  # Train final model with best parameters
+  dt_full <- rpart(
+    price ~ ., 
+    data=train_data, 
+    method="anova",
+    control=rpart.control(cp=cp_best, minsplit=20, maxdepth=depth_best)
+  )
+  
+  # Examine cross-validation results to find optimal pruning
+  plotcp(dt_full)
+  printcp(dt_full)
+  
+  # Apply cost-complexity pruning if beneficial
+  best_cp <- dt_full$cptable[which.min(dt_full$cptable[,"xerror"]), "CP"]
+  cat("Optimal cp from cross-validation:", best_cp, "\n")
+  
+  if(best_cp > cp_best) {
+    cat("Pruning tree for better generalization\n")
+    my_model <- prune(dt_full, cp = best_cp)
+  } else {
+    my_model <- dt_full
+  }
+  
+  # Check model complexity
+  cat("Final tree has", nrow(my_model$frame), "nodes\n")
+  
+  # Visualize final model
+  rpart.plot(my_model, main=paste("Final Decision Tree (cp =", cp_best, ", depth =", depth_best, ")"), 
+             extra=101, box.palette="RdYlGn")
+  
+  # Create variable importance plot
+  if(length(my_model$variable.importance) > 0) {
+    var_imp <- data.frame(
+      Variable = names(my_model$variable.importance),
+      Importance = my_model$variable.importance
+    ) %>% arrange(desc(Importance))
+    
+    ggplot(var_imp, aes(x=reorder(Variable, Importance), y=Importance)) +
+      geom_col(fill="steelblue") +
+      coord_flip() +
+      theme_minimal() +
+      labs(title="Variable Importance in Decision Tree", x="", y="Importance")
+  }
+} else {
+  # Extract SVM parameters from best model name
+  C_best <- as.numeric(str_extract(best, "(?<=C=)[0-9]+"))
+  g_best <- as.numeric(str_extract(best, "(?<=γ=)[0-9\\.]+"))
+  cat("Training final SVM with C =", C_best, "and gamma =", g_best, "\n")
+  
+  # Calculate top features again but on full dataset
+  num_data <- model_data %>% 
+    select(where(is.numeric)) %>% 
+    select(-matches("original_price|price|log_price"))
+  
+  corrs <- cor(num_data, model_data$price, use="pairwise.complete.obs")
+  corrs_abs <- abs(corrs)
+  sorted_indices <- order(corrs_abs, decreasing=TRUE)
+  top_n <- min(5, length(sorted_indices))
+  feats <- rownames(corrs)[sorted_indices[1:top_n]]
+  
+  cat("Top features for final SVM:", paste(feats, collapse=", "), "\n")
+  
+  # Train final SVM model
+  frm_text <- paste("price ~", paste(feats, collapse=" + "))
+  cat("Formula:", frm_text, "\n")
+  
+  my_model <- svm(
+    as.formula(frm_text), 
+    data=model_data,
+    kernel="radial", 
+    cost=C_best, 
+    gamma=g_best
+  )
+  
+  # Visualize predictions vs actual
+  preds <- predict(my_model, model_data)
+  dfp <- tibble(Actual=model_data$price, Pred=preds)
+  ggplot(dfp, aes(Actual, Pred)) + 
+    geom_point(alpha=0.6) + 
+    geom_abline(intercept=0, slope=1, color="red", linetype="dashed") +
+    labs(title=paste("SVM Predictions (C=", C_best, ", gamma=", g_best, ")"),
+         x="Actual Price", y="Predicted Price")
+}
+
+# Calculate final model performance metrics
+if(exists("my_model")) {
+  # Create a true train/test split for final evaluation
+  set.seed(456)  # Different seed from model selection
+  train_indices <- sample(1:nrow(model_data), size = 0.7 * nrow(model_data))
+  final_train <- model_data[train_indices, ]
+  final_test <- model_data[-train_indices, ]
+  
+  # Training metrics
+  pred_train <- predict(my_model, final_train)
+  rmse_train <- sqrt(mean((final_train$price - pred_train)^2))
+  mae_train <- mean(abs(final_train$price - pred_train))
+  
+  # Test metrics
+  pred_test <- predict(my_model, final_test)
+  rmse_test <- sqrt(mean((final_test$price - pred_test)^2))
+  mae_test <- mean(abs(final_test$price - pred_test))
+  
+  # Calculate overfitting ratio
+  overfit_ratio_mae <- mae_test / mae_train
+  overfit_ratio_rmse <- rmse_test / rmse_train
+  
+  cat("\nFinal model performance:\n")
+  cat("Training set (70%):\n")
+  cat("  RMSE:", round(rmse_train, 4), "\n")
+  cat("  MAE:", round(mae_train, 4), "\n")
+  cat("Test set (30%):\n")
+  cat("  RMSE:", round(rmse_test, 4), "\n")
+  cat("  MAE:", round(mae_test, 4), "\n")
+  cat("Overfitting assessment:\n")
+  cat("  Test/Train MAE ratio:", round(overfit_ratio_mae, 4), 
+      ifelse(overfit_ratio_mae > 1.5, " - Possible overfitting", 
+             ifelse(overfit_ratio_mae > 1.2, " - Slight overfitting", " - Good generalization")), "\n")
+  
+  # Create a comparison plot between training and test predictions
+  pred_df <- bind_rows(
+    tibble(Set = "Training", Actual = final_train$price, Predicted = pred_train),
+    tibble(Set = "Test", Actual = final_test$price, Predicted = pred_test)
+  )
+  
+  ggplot(pred_df, aes(x = Actual, y = Predicted, color = Set)) +
+    geom_point(alpha = 0.6) +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    facet_wrap(~Set) +
+    scale_color_manual(values = c("Training" = "blue", "Test" = "red")) +
+    theme_minimal() +
+    labs(title = "Model Predictions on Training vs Test Data",
+         subtitle = paste("Test/Train MAE Ratio:", round(overfit_ratio_mae, 2)),
+         x = "Actual Price", y = "Predicted Price")
+  
+  # Create residual plots to check for patterns
+  pred_df <- pred_df %>% mutate(Residual = Predicted - Actual)
+  
+  ggplot(pred_df, aes(x = Actual, y = Residual, color = Set)) +
+    geom_point(alpha = 0.6) +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    facet_wrap(~Set) +
+    scale_color_manual(values = c("Training" = "blue", "Test" = "red")) +
+    theme_minimal() +
+    labs(title = "Residual Plots",
+         subtitle = "Check for patterns indicating model bias",
+         x = "Actual Price", y = "Residual (Predicted - Actual)")
+} else {
+  cat("\nWarning: No final model was created\n")
+}
+```
+
+### TASK 3
+
+You are not allowed to write/change any code for this Task. This task will be executed by the 
+instructor for automatic evaluation. You will **not** be given the `zoomba_test.csv` file at any times. 
+
+#### Answer
+
+```{r, cache=F}
+if (FALSE)
+{
+  test_data <- read.csv("zoomba_test.csv")
+  predictions <- predict(my_model, select(test_data, -price))
+  mean(abs(test_data$price - predictions))
+}
+```
